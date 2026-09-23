@@ -6,6 +6,7 @@ const props = defineProps({
   users: Array,
   priorities: Array,
   statuses: Array,
+  default_opened_at: String,
 });
 
 const form = useForm({
@@ -14,7 +15,7 @@ const form = useForm({
   priority: 'medium',
   status: 'open',
   assigned_to: props.users[0]?.id || '',
-  opened_at: new Date().toISOString().slice(0,16),
+  opened_at: props.default_opened_at,
 });
 
 const submit = () => {

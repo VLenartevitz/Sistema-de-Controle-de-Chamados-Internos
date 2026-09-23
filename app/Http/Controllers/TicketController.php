@@ -32,6 +32,7 @@ class TicketController extends Controller
             'users' => User::orderBy('name')->get(['id', 'name', 'email']),
             'priorities' => array_map(fn ($c) => ['value' => $c->value, 'label' => $c->label()], TicketPriority::cases()),
             'statuses' => array_map(fn ($c) => ['value' => $c->value, 'label' => $c->label()], TicketStatus::cases()),
+            'default_opened_at' => now()->format('Y-m-d\TH:i'),
         ]);
     }
 
