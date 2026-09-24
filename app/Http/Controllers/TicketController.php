@@ -8,6 +8,8 @@ use App\Http\Requests\StoreTicketRequest;
 use App\Http\Requests\UpdateTicketRequest;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Services\TicketAssignmentService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -41,6 +43,25 @@ class TicketController extends Controller
         $ticket = Ticket::create($request->validated());
 
         return redirect()->route('tickets.show', $ticket)->with('success', 'Chamado criado com sucesso!');
+    }
+
+    public function nextAssignee(TicketAssignmentService $service): JsonResponse
+    {
+        try {
+            $user = $service->resolve();
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => 'Cadastre um responsável antes de usar atribuição automática.',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'reason' => $service->preview($user),
+        ]);
     }
 
     public function show(Ticket $ticket): Response

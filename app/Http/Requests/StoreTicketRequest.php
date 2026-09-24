@@ -18,7 +18,7 @@ class StoreTicketRequest extends FormRequest
     {
         return [
             'title' => ['required', 'string', 'max:255'],
-            'description' => ['required', 'string', 'min:10'],
+            'description' => ['required', 'string'],
             'priority' => ['required', Rule::in(TicketPriority::values())],
             'status' => ['required', Rule::in(TicketStatus::values())],
             'assigned_to' => ['required', 'exists:users,id'],

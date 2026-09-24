@@ -32,7 +32,20 @@ class Ticket extends Model
 
     public function assignedUser(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'assigned_to');
+        return $this->belongsTo(User::class, 'assigned_to')->withDefault([
+            'name' => 'Sem responsável',
+            'email' => '',
+        ]);
+    }
+
+    public function scopeOpen($query)
+    {
+        return $query->whereIn('status', TicketStatus::openStatuses());
+    }
+
+    public function scopeByPriority($query, string $priority)
+    {
+        return $query->where('priority', $priority);
     }
 
     public function scopeSearch($query, ?string $search)

@@ -14,7 +14,7 @@ return new class extends Migration
             $table->text('description');
             $table->string('priority', 20);
             $table->string('status', 20);
-            $table->foreignId('assigned_to')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('assigned_to')->nullable()->constrained('users')->nullOnDelete();
             $table->dateTime('opened_at');
             $table->timestamps();
 
