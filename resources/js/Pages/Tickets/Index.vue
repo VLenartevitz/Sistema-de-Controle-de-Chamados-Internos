@@ -56,7 +56,7 @@ const toggleSort = (field) => {
     form.value.direction = form.value.direction === 'asc' ? 'desc' : 'asc';
   } else {
     form.value.sort = field;
-    form.value.direction = field === 'priority' ? 'desc' : 'desc';
+    form.value.direction = 'desc';
   }
   applyFilters();
 };
@@ -79,8 +79,14 @@ const statusBadge = (s) => {
   const map = { open: 'bg-blue-100 text-blue-800', in_progress: 'bg-purple-100 text-purple-800', resolved: 'bg-green-100 text-green-800', closed: 'bg-gray-100 text-gray-800' };
   return map[s] || 'bg-gray-100';
 };
-const priorityLabel = (p) => ({ low: 'Baixa', medium: 'Média', high: 'Alta' }[p] || p);
-const statusLabel = (s) => ({ open: 'Aberto', in_progress: 'Em andamento', resolved: 'Resolvido', closed: 'Fechado' }[s] || s);
+// Os rótulos vêm do servidor (que os tira dos enums), não de uma cópia em JS:
+// assim "Alta" ou "Em andamento" existem em um único lugar do projeto e não
+// podem divergir entre PHP e JavaScript.
+const labelDe = (options, value) =>
+  options.find((option) => option.value === value)?.label ?? value;
+
+const priorityLabel = (value) => labelDe(props.priorities, value);
+const statusLabel = (value) => labelDe(props.statuses, value);
 </script>
 
 <template>
