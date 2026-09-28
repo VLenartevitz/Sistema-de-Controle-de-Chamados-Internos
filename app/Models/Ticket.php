@@ -43,9 +43,44 @@ class Ticket extends Model
         return $query->whereIn('status', TicketStatus::openStatuses());
     }
 
-    public function scopeByPriority($query, string $priority)
+    public function scopeByPriority($query, ?string $priority)
     {
+        if (blank($priority)) {
+            return $query;
+        }
+
         return $query->where('priority', $priority);
+    }
+
+    public function scopeByStatus($query, ?string $status)
+    {
+        if (blank($status)) {
+            return $query;
+        }
+
+        return $query->where('status', $status);
+    }
+
+    public function scopeByAssignee($query, ?int $assignee)
+    {
+        if (blank($assignee)) {
+            return $query;
+        }
+
+        return $query->where('assigned_to', $assignee);
+    }
+
+    public function scopeByOpenedAtRange($query, ?string $from, ?string $to)
+    {
+        if (! blank($from)) {
+            $query->whereDate('opened_at', '>=', $from);
+        }
+
+        if (! blank($to)) {
+            $query->whereDate('opened_at', '<=', $to);
+        }
+
+        return $query;
     }
 
     public function scopeSearch($query, ?string $search)

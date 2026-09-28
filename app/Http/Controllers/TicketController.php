@@ -18,13 +18,50 @@ class TicketController extends Controller
 {
     public function index(Request $request): Response
     {
+        $allowedSorts = ['opened_at', 'priority', 'status', 'created_at', 'title'];
+        $sort = in_array($request->input('sort'), $allowedSorts, true) ? $request->input('sort') : 'created_at';
+        $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
+
+        // Validação leve: ignora valores inválidos em vez de 422 para manter UX de listagem
+        $priority = in_array($request->input('priority'), TicketPriority::values(), true) ? $request->input('priority') : null;
+        $status = in_array($request->input('status'), TicketStatus::values(), true) ? $request->input('status') : null;
+        $assignedTo = $request->input('assigned_to');
+        $assignedTo = is_numeric($assignedTo) ? (int) $assignedTo : null;
+        $openedFrom = $request->input('opened_from');
+        $openedTo = $request->input('opened_to');
+        $search = $request->input('search');
+
         $tickets = Ticket::with('assignedUser')
-            ->latest()
+            ->byPriority($priority)
+            ->byStatus($status)
+            ->byAssignee($assignedTo)
+            ->byOpenedAtRange($openedFrom, $openedTo)
+            ->search($search)
+            ->when($sort === 'priority', function ($q) use ($direction) {
+                // Ordenação semântica: high > medium > low via CASE
+                $q->orderByRaw("CASE priority WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END " . ($direction === 'asc' ? 'ASC' : 'DESC'));
+            }, function ($q) use ($sort, $direction) {
+                $q->orderBy($sort, $direction);
+            })
+            ->orderBy('id', 'desc')
             ->paginate(10)
             ->withQueryString();
 
         return Inertia::render('Tickets/Index', [
             'tickets' => $tickets,
+            'filters' => [
+                'search' => $search,
+                'priority' => $priority,
+                'status' => $status,
+                'assigned_to' => $assignedTo,
+                'opened_from' => $openedFrom,
+                'opened_to' => $openedTo,
+                'sort' => $sort,
+                'direction' => $direction,
+            ],
+            'users' => User::orderBy('name')->get(['id', 'name', 'email']),
+            'priorities' => array_map(fn ($c) => ['value' => $c->value, 'label' => $c->label()], TicketPriority::cases()),
+            'statuses' => array_map(fn ($c) => ['value' => $c->value, 'label' => $c->label()], TicketStatus::cases()),
         ]);
     }
 

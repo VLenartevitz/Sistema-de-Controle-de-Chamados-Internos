@@ -18,7 +18,7 @@ class StoreTicketRequest extends FormRequest
     {
         return [
             'title' => ['required', 'string', 'max:255'],
-            'description' => ['required', 'string'],
+            'description' => ['required', 'string', 'min:10'],
             'priority' => ['required', Rule::in(TicketPriority::values())],
             'status' => ['required', Rule::in(TicketStatus::values())],
             'assigned_to' => ['required', 'exists:users,id'],
@@ -31,6 +31,7 @@ class StoreTicketRequest extends FormRequest
         return [
             'title.required' => 'O título é obrigatório.',
             'description.required' => 'A descrição é obrigatória.',
+            'description.min' => 'A descrição deve ter pelo menos 10 caracteres.',
             'priority.required' => 'A prioridade é obrigatória.',
             'status.required' => 'O status é obrigatório.',
             'assigned_to.required' => 'O responsável é obrigatório.',
