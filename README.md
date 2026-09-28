@@ -4,7 +4,7 @@ Sistema de chamados internos solicitado pela Codificar como desafio técnico. Mo
 
 Escopo entregue: cadastro, edição, listagem e visualização de chamados, distribuição automática por menor carga e listagem com busca, filtros e ordenação.
 
-## Stack e Justificativas (PDF 1.2, SDD 4,17)
+## Stack e Justificativas (PDF 1.2)
 
 | Tecnologia | Uso | Justificativa |
 |---|---|---|
@@ -12,15 +12,15 @@ Escopo entregue: cadastro, edição, listagem e visualização de chamados, dist
 | Inertia.js | Integração | Reduz atrito front/back sem SPA/API separadas. Produtividade para time pequeno (dica PDF). |
 | Vue 3 | Frontend | Componentização simples e produtiva. |
 | Tailwind CSS 4 | UI | Utilitário para interface funcional rápida, sem reinventar roda. |
-| MySQL 8 (Docker) | Banco | Substituí SQLite do SDD por MySQL para ambiente Docker mais realista e fácil de testar em equipe. Testes continuam com SQLite :memory: (rápido/isolado). |
-| PHPUnit 12 | Testes | Padrão Laravel, cobertura das regras principais. Escolha alternativa a Pest (SDD previa Pest/PHPUnit). |
+| MySQL 8 (Docker) | Banco | Banco relacional em container, realista e fácil de testar em equipe. A suíte de testes roda com banco em memória, sem depender do container. |
+| PHPUnit 12 | Testes | Padrão Laravel, cobertura das regras principais. Escolha alternativa a Pest, que não é exigido. |
 | Docker + docker-compose | Infra | Requisito da entrega: `use Docker` e `construir de maneira que consigam testar facilmente`. 1 comando sobe app+db, outro roda testes. |
 
 Decisões arquiteturais:
-- **Monólito modular single-repo** (SDD 5): projeto pequeno, único domínio. Evita custo de separar front/back.
-- **Sem autenticação**: PDF/SDD não exigem login, e o requisito 3.2 dispensa tela própria de cadastro de responsáveis. Introduzir auth traria middleware, policies e gestão de sessão sem valor entregue no escopo. É a primeira evolução candidata (ver "Próximos Passos").
-- **Regra de distribuição isolada em Service** (SDD 10): `TicketAssignmentService` concentra o cálculo de carga, permitindo testar a regra de negócio sem passar por HTTP.
-- **Enums PHP** para `priority/status` (SDD 8): evita strings mágicas, centraliza os rótulos em PT-BR e alimenta o `Rule::in()` da validação.
+- **Monólito modular single-repo**: projeto pequeno, único domínio. Evita custo de separar front/back.
+- **Sem autenticação**: o PDF não exige login, e o requisito 3.2 dispensa tela própria de cadastro de responsáveis. Introduzir auth traria middleware, policies e gestão de sessão sem valor entregue no escopo. É a primeira evolução candidata (ver "Próximos Passos").
+- **Regra de distribuição isolada em Service**: `TicketAssignmentService` concentra o cálculo de carga, permitindo testar a regra de negócio sem passar por HTTP.
+- **Enums PHP** para `priority/status`: evita strings mágicas, centraliza os rótulos em PT-BR e alimenta o `Rule::in()` da validação.
 - **Filtros, busca e ordenação na listagem** (PDF 5.2): a especificação deixa a apresentação a critério do candidato; a implementação segue o que a pessoa solicitante precisaria no dia a dia para acompanhar a fila.
 
 ## Funcionalidades Entregues
@@ -51,7 +51,7 @@ Decisões arquiteturais:
 - [x] Docker + docker-compose (app + MySQL 8) e Makefile com atalhos
 - [x] Testes automatizados de CRUD, validação, filtros e regra de distribuição
 
-**Fora do escopo** (PDF 3 e SDD 3): tela de cadastro de responsáveis, notificações por e-mail/WhatsApp, anexos, comentários, chat, SLA, permissões avançadas e microserviços.
+**Fora do escopo** (PDF 3): tela de cadastro de responsáveis, notificações por e-mail/WhatsApp, anexos, comentários, chat, SLA, permissões avançadas e microserviços.
 
 ## Decisões e Trade-offs
 
@@ -102,15 +102,17 @@ Mitigação em planejamento: mover a resolução para dentro da transação que 
 
 A regra de distribuição roda **exclusivamente** no servidor, dentro de `TicketAssignmentService`, e é testável sem passar por HTTP. A tela chama `GET /tickets/next-assignee` apenas para *pré-visualizar* a sugestão acompanhada da justificativa de carga — o endpoint não altera nenhum dado. Isso evita duplicar regra de negócio no front e dá transparência ao usuário sem abrir mão do controle do servidor.
 
-### Por que MySQL 8 em vez do SQLite da SDD
+### Banco de dados
 
-A SDD (§4) sugeria SQLite para facilitar a execução local. A decisão aqui foi usar **MySQL 8 no ambiente de execução** por ser o banco de produção e evitar diferenças de comportamento entre dialects na aplicação. Os **testes usam SQLite `:memory:`** (`phpunit.xml`), o que os torna rápidos e isolados, sem depender de container.
+O ambiente de execução usa **MySQL 8** por ser o banco relacional amadurecido para produção, com suporte a transações e a `SELECT ... FOR UPDATE`, recurso usado pela regra de distribuição. Rodar em container deixa o ambiente de execução idêntico ao de qualquer outra máquina, sem instalação local de servidor de banco.
 
-Trade-off: `whereDate` e ordenações com `CASE` podem se comportar de modo diferente entre os dois engines. A suíte cobre explicitamente a ordenação por prioridade e os filtros por data justamente para reduzir esse risco.
+A suíte de testes, por outro lado, roda com um **banco em memória** (`phpunit.xml`): cada teste começa com o esquema vazio e é destruído ao final, o que garante isolamento e velocidade sem precisar subir container nem limpar dados entre execuções.
+
+Trade-off: por serem engines distintas, `whereDate` e ordenações com `CASE` podem se comportar de modo diferente entre execução e teste. A suíte cobre explicitamente a ordenação por prioridade e os filtros por data justamente para reduzir esse risco.
 
 ### Sem autenticação
 
-O PDF e a SDD não exigem login, e o requisito 3.2 dispensa tela própria de cadastro de responsáveis. Introduzir autenticação traria middleware, policies e gestão de sessão sem valor entregue no escopo pedido. É a primeira evolução candidata listada em "Próximos Passos".
+O PDF não exige login, e o requisito 3.2 dispensa tela própria de cadastro de responsáveis. Introduzir autenticação traria middleware, policies e gestão de sessão sem valor entregue no escopo pedido. É a primeira evolução candidata listada em "Próximos Passos".
 
 ## Pré-requisitos
 
@@ -157,14 +159,14 @@ make migrate     # migrate --force
 make npm-build   # npm run build
 ```
 
-**Exigência 4 atendida:** `make test` ou `docker compose exec app php artisan test --testdox` roda toda a suíte sem dependência externa (usa SQLite :memory: configurado em `phpunit.xml`). Não precisa de MySQL para testes.
+**Exigência 4 atendida:** `make test` ou `docker compose exec app php artisan test --testdox` roda toda a suíte sem depender do container de banco (usa banco em memória configurado em `phpunit.xml`).
 
 ## Execução sem Docker (alternativa)
 
 ```bash
 composer install
 cp .env.example .env
-# Ajuste DB_CONNECTION=sqlite ou mysql local
+# Ajuste as credenciais do banco no .env
 php artisan key:generate
 php artisan migrate --seed
 npm install
@@ -212,10 +214,10 @@ tests/Unit/TicketModelTest
 Dockerfile (php:8.4-cli + node20 + composer)
 docker-compose.yml (app, db mysql:8.0, test)
 Makefile
-Docs/ (SDD e PDF do desafio)
+Docs/ (PDF do desafio)
 ```
 
-## Modelo de Dados (SDD 7)
+## Modelo de Dados
 
 `tickets(id, title string 255, description text, priority string, status string, assigned_to FK users.id nullOnDelete, opened_at datetime, timestamps)` + índice composto em `[status, priority, assigned_to]`.
 
