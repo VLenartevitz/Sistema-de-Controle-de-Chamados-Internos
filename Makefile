@@ -2,7 +2,7 @@
 
 up:
 	docker compose up -d --build
-	@echo "App: http://localhost:8000 - DB: localhost:3306"
+	@echo "App: http://localhost:8000 - DB: localhost:3308"
 
 down:
 	docker compose down

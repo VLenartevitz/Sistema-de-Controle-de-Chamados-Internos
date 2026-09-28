@@ -1,12 +1,14 @@
-# Sistema de Controle de Chamados Internos - Codificar (v1 - Etapa 2.0)
+# Sistema de Controle de Chamados Internos - Codificar
 
-Primeira versão do sistema de chamados internos solicitado pela Codificar. Esta entrega cobre a **Etapa 2.0 - Cadastro de Chamados** (CRUD completo) com Docker e testes. Etapas 3.0-6.0 (distribuição automática, filtros avançados) serão evoluções futuras.
+Sistema de chamados internos solicitado pela Codificar como desafio técnico. Monólito modular em Laravel + Inertia.js + Vue, com Docker, seeders e suíte de testes automatizados.
+
+Escopo entregue: cadastro, edição, listagem e visualização de chamados, distribuição automática por menor carga e listagem com busca, filtros e ordenação.
 
 ## Stack e Justificativas (PDF 1.2, SDD 4,17)
 
 | Tecnologia | Uso | Justificativa |
 |---|---|---|
-| Laravel 11 | Backend | Framework maduro, MVC, validação, ORM, migrations, testes. Recomendado pela Codificar. |
+| Laravel 13 | Backend | Framework maduro, MVC, validação, ORM, migrations, testes. Recomendado pela Codificar. |
 | Inertia.js | Integração | Reduz atrito front/back sem SPA/API separadas. Produtividade para time pequeno (dica PDF). |
 | Vue 3 | Frontend | Componentização simples e produtiva. |
 | Tailwind CSS 4 | UI | Utilitário para interface funcional rápida, sem reinventar roda. |
@@ -16,28 +18,105 @@ Primeira versão do sistema de chamados internos solicitado pela Codificar. Esta
 
 Decisões arquiteturais:
 - **Monólito modular single-repo** (SDD 5): projeto pequeno, único domínio. Evita custo de separar front/back.
-- **Sem auth v1** (escolha 3): PDF/SDD não exigem login; adicionaria complexidade sem valor para 2.0.
-- **Sem Service de distribuição nesta etapa**: RN01-RN02 cobertos, RN03-RN06 adiados para 4.0.
-- **Enums PHP 8.4** para `priority/status` (SDD 8): evita strings mágicas, validação explícita.
+- **Sem autenticação**: PDF/SDD não exigem login, e o requisito 3.2 dispensa tela própria de cadastro de responsáveis. Introduzir auth traria middleware, policies e gestão de sessão sem valor entregue no escopo. É a primeira evolução candidata (ver "Próximos Passos").
+- **Regra de distribuição isolada em Service** (SDD 10): `TicketAssignmentService` concentra o cálculo de carga, permitindo testar a regra de negócio sem passar por HTTP.
+- **Enums PHP** para `priority/status` (SDD 8): evita strings mágicas, centraliza os rótulos em PT-BR e alimenta o `Rule::in()` da validação.
+- **Filtros, busca e ordenação na listagem** (PDF 5.2): a especificação deixa a apresentação a critério do candidato; a implementação segue o que a pessoa solicitante precisaria no dia a dia para acompanhar a fila.
 
-## Funcionalidades Entregues (2.0)
+## Funcionalidades Entregues
 
-- [x] `2.1` Cadastro, edição, listagem e visualização de chamados
-- [x] `2.2` Campos: título (255), descrição (text), prioridade (low/medium/high), status (open/in_progress/resolved/closed), responsável (FK users), opened_at (datetime)
-- [x] Rotas: `GET / (redirect)`, `GET /tickets`, `GET /tickets/create`, `POST /tickets`, `GET /tickets/{id}`, `GET /tickets/{id}/edit`, `PUT /tickets/{id}`
+**Cadastro de chamados (PDF 2.0)**
+- [x] Cadastro, edição, listagem e visualização de chamados
+- [x] Campos: título (255), descrição (text, mín. 10 caracteres), prioridade (low/medium/high), status (open/in_progress/resolved/closed), responsável (FK users), opened_at (datetime)
 - [x] Validação via FormRequest + mensagens em PT-BR
-- [x] Seeder com 3 responsáveis (João Silva, Maria Souza, Carlos Oliveira) para `assigned_to`
-- [x] Frontend Inertia/Vue: `Tickets/Index`, `Create`, `Show`, `Edit` + `Layouts/AppLayout`
-- [x] Paginação 10/it
-- [x] Testes automatizados (ver abaixo)
+- [x] `opened_at` preenchido com `now()` do servidor quando não informado
 
-**Fora do escopo v1 (SDD 3, adiado):** distribuição automática, filtros/busca, dashboard, notificações, anexos, SLA.
+**Responsáveis (PDF 3.0)**
+- [x] Seeder com 3 responsáveis (João Silva, Maria Souza, Carlos Oliveira)
+- [x] Select de responsável disponível ao abrir e ao editar
+- [x] Sem tela de cadastro própria, conforme o requisito 3.2
+
+**Distribuição automática (PDF 4.0)**
+- [x] `TicketAssignmentService` com a regra de menor carga
+- [x] Atribuição manual e automática, com pré-visualização da justificativa
+- [x] `GET /tickets/next-assignee` para consultar a sugestão com a contagem de carga
+
+**Listagem e acompanhamento (PDF 5.0)**
+- [x] Busca por título e descrição (debounce de 350ms)
+- [x] Filtros por prioridade, status, responsável e intervalo de data de abertura
+- [x] Ordenação por título, prioridade, status, data de abertura e criação
+- [x] Paginação 10/it preservando os filtros ativos na URL
+
+**Infraestrutura e qualidade**
+- [x] Docker + docker-compose (app + MySQL 8) e Makefile com atalhos
+- [x] Testes automatizados de CRUD, validação, filtros e regra de distribuição
+
+**Fora do escopo** (PDF 3 e SDD 3): tela de cadastro de responsáveis, notificações por e-mail/WhatsApp, anexos, comentários, chat, SLA, permissões avançadas e microserviços.
+
+## Decisões e Trade-offs
+
+O PDF orienta: *"Se precisar fazer trade-offs por conta do tempo, documente suas decisões no README."* Esta seção registra as decisões que afetam o comportamento do sistema.
+
+### O que conta como "em aberto"? (requisito 4.3)
+
+O PDF deixa a definição a critério do candidato, exigindo que ela seja explicitada e justificada.
+
+**Apenas `OPEN` e `IN_PROGRESS` entram na contagem de carga** (`TicketStatus::openStatuses()`).
+
+A justificativa está no significado de cada status no modelo:
+
+| Status | Significado | Conta na carga? |
+|---|---|---|
+| `open` | Registrado, ainda não iniciado | Sim |
+| `in_progress` | Suporte trabalhando | Sim |
+| `resolved` | Suporte concluiu, aguardando confirmação do solicitante | Não |
+| `closed` | Confirmado e encerrado | Não |
+
+`RESOLVED` representa trabalho **concluído** que aguarda apenas a confirmação de quem abriu o chamado; `CLOSED` está totalmente encerrado. Nos dois casos o atendimento terminou, então nenhum dos dois deve influenciar para qual responsável um **novo** chamado será distribuído.
+
+Incluir `IN_PROGRESS` é uma decisão deliberada: o status sugere progresso, mas o chamado representa carga real de trabalho. Excluí-lo faria a distribuição ignorar exatamente os chamados que estão em atendimento.
+
+### Desempate determinístico
+
+A regra completa de ordenação em `TicketAssignmentService::resolve()`:
+
+1. Total de chamados abertos (`open` + `in_progress`) — **crescente**
+2. Chamados abertos de prioridade `high` — crescente
+3. Chamados abertos de prioridade `medium` — crescente
+4. Chamados abertos de prioridade `low` — crescente
+5. `id` do responsável — crescente
+
+O total de abertos é o critério principal (requisito 4.1). A prioridade entra como desempate para que, em caso de empate na carga, o responsável com chamados mais graves fique com os próximos. O `id` é o critério final e garante resultado determinístico, como exige o documento de requisitos. A ordem é estável e não depende de `random()`, então o mesmo estado da base sempre produz a mesma decisão.
+
+### Limitação conhecida: a atribuição não é atômica
+
+**Estado atual:** o `GET /tickets/next-assignee` calcula a sugestão em uma transação própria, e o `POST /tickets` registra o `assigned_to` enviado pelo formulário. A gravação **não** ocorre na mesma transação que o cálculo.
+
+Consequência: dois operadores que Abram chamados no mesmo instante podem receber a mesma sugestão, porque ambos leeram a mesma carga. Não há corrupção de dados — o desempate continua determinístico — mas o balanceamento pode ficar levemente otimista em cenários de alta concorrência.
+
+O `lockForUpdate()` presente no service não corrige isso hoje: ele incide sobre a linha de `users` e a transação fecha antes de qualquer escrita em `tickets`, ou seja, o lock é liberado antes de ser útil.
+
+Mitigação em planejamento: mover a resolução para dentro da transação que grava o chamado.
+
+### Por que o servidor decide, e não a tela
+
+A regra de distribuição roda **exclusivamente** no servidor, dentro de `TicketAssignmentService`, e é testável sem passar por HTTP. A tela chama `GET /tickets/next-assignee` apenas para *pré-visualizar* a sugestão acompanhada da justificativa de carga — o endpoint não altera nenhum dado. Isso evita duplicar regra de negócio no front e dá transparência ao usuário sem abrir mão do controle do servidor.
+
+### Por que MySQL 8 em vez do SQLite da SDD
+
+A SDD (§4) sugeria SQLite para facilitar a execução local. A decisão aqui foi usar **MySQL 8 no ambiente de execução** por ser o banco de produção e evitar diferenças de comportamento entre dialects na aplicação. Os **testes usam SQLite `:memory:`** (`phpunit.xml`), o que os torna rápidos e isolados, sem depender de container.
+
+Trade-off: `whereDate` e ordenações com `CASE` podem se comportar de modo diferente entre os dois engines. A suíte cobre explicitamente a ordenação por prioridade e os filtros por data justamente para reduzir esse risco.
+
+### Sem autenticação
+
+O PDF e a SDD não exigem login, e o requisito 3.2 dispensa tela própria de cadastro de responsáveis. Introduzir autenticação traria middleware, policies e gestão de sessão sem valor entregue no escopo pedido. É a primeira evolução candidata listada em "Próximos Passos".
 
 ## Pré-requisitos
 
 - Docker e Docker Compose v2
 - Git
-- (Opcional sem Docker) PHP 8.4+, Composer 2, Node 20+, MySQL 8
+- (Opcional sem Docker) PHP 8.3+, Composer 2, Node 20+, MySQL 8
 
 ## Instalação e Execução com Docker (Recomendado)
 
@@ -45,7 +124,7 @@ Decisões arquiteturais:
 git clone <repo> && cd Sistema-de-Controle-de-Chamados-Internos
 cp .env.example .env
 
-# Sobe app (porta 8000) + db (3306) + roda migrations automaticamente
+# Sobe app (porta 8000) + db (porta 3308) e roda as migrations automaticamente
 docker compose up --build -d
 
 # Acompanhe logs (opcional)
@@ -111,31 +190,36 @@ Suíte atual (23 testes, 88 asserções):
 - `tests/Feature/TicketValidationTest` (9): title/description obrigatórios, descrição curta, priority/status inválidos, assigned_to obrigatório/inexistente, title >255, update requer campos
 - `tests/Feature/ExampleTest` (1) + `tests/Unit/ExampleTest` (1)
 
-Todos verdes com `withoutVite()` em `tests/TestCase.php:8` para evitar necessidade de manifest em ambiente de teste.
+Todos verdes com `withoutVite()` em `tests/TestCase.php:12` para evitar necessidade do manifest de assets em ambiente de teste.
 
 ## Estrutura
 
 ```
 app/Enums/TicketPriority, TicketStatus
-app/Models/Ticket (fillable, casts, belongsTo assignedUser, scopeSearch)
+app/Models/Ticket (fillable, casts, belongsTo assignedUser, scopes de filtro e busca)
+app/Models/User
+app/Services/TicketAssignmentService (regra de distribuição automática)
 app/Http/Requests/StoreTicketRequest, UpdateTicketRequest
-app/Http/Controllers/TicketController (index, create, store, show, edit, update)
+app/Http/Controllers/TicketController (index, create, store, show, edit, update, nextAssignee)
 app/Http/Middleware/HandleInertiaRequests
 resources/js/Layouts/AppLayout.vue
 resources/js/Pages/Tickets/{Index,Create,Show,Edit}.vue
 database/migrations/*_create_tickets_table.php
 database/factories/TicketFactory, UserFactory
-database/seeders/DatabaseSeeder (3 users)
+database/seeders/DatabaseSeeder (3 responsáveis)
 tests/Feature/TicketCrudTest, TicketValidationTest
 tests/Unit/TicketModelTest
 Dockerfile (php:8.4-cli + node20 + composer)
-docker-compose.yml (app, db mysql:8.0)
+docker-compose.yml (app, db mysql:8.0, test)
 Makefile
+Docs/ (SDD e PDF do desafio)
 ```
 
 ## Modelo de Dados (SDD 7)
 
-`tickets(id, title string 255, description text, priority string, status string, assigned_to FK users.id, opened_at datetime, timestamps)` + index em status/priority/assigned_to.
+`tickets(id, title string 255, description text, priority string, status string, assigned_to FK users.id nullOnDelete, opened_at datetime, timestamps)` + índice composto em `[status, priority, assigned_to]`.
+
+`assigned_to` é nullable no banco para permitir a remoção de um responsável sem perder o histórico do chamado; `Ticket::assignedUser()` usa `withDefault` para exibir "Sem responsável" nesses casos. A camada HTTP continua exigindo o campo, conforme o requisito 2.2.
 
 `users(id, name, email, password, timestamps)` reaproveitada do Laravel.
 
@@ -144,18 +228,21 @@ Makefile
 | Método | Rota | Ação |
 |---|---|---|
 | GET | / | redirect -> /tickets |
-| GET | /tickets | index |
+| GET | /tickets | index (listagem com busca, filtros e ordenação) |
 | GET | /tickets/create | create |
 | POST | /tickets | store |
 | GET | /tickets/{id} | show |
 | GET | /tickets/{id}/edit | edit |
 | PUT/PATCH | /tickets/{id} | update |
+| GET | /tickets/next-assignee | sugere o responsável com menor carga (JSON) |
 
-## Próximos Passos (fora desta entrega)
+## Próximos Passos (evoluções futuras)
 
-- 3.0/4.0: `TicketAssignmentService` + atribuição automática (menor carga open/in_progress, desempate ID)
-- 5.0: filtros por status/prioridade/responsável + busca
-- 6.0: Dashboard simples
+- **Autenticação e autorização** por perfil — primeira evolução candidata; requer `TicketPolicy` e middleware de rota
+- **Histórico de alterações** do chamado (quem mudou o quê e quando)
+- **Categorias/departamentos** para além dos três responsáveis do seeder
+- **Busca full-text** quando o volume justificar (`LIKE %termo%` não usa índice)
+- **SLA e métricas de atendimento**
 
 ## Licença
 
