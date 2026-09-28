@@ -14,6 +14,15 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# PCOV: driver de medição de cobertura de código.
+# A extensão é compilada e carregada, mas fica inerte (pcov.enabled=0) para não
+# pagar o custo de instrumentação em `make test`. Só é ligada sob demanda,
+# via `make coverage` (ver Makefile).
+RUN pecl install pcov \
+    && docker-php-ext-enable pcov \
+    && echo "pcov.enabled=0" >> /usr/local/etc/php/conf.d/docker-php-ext-pcov.ini \
+    && rm -rf /tmp/pear
+
 # Node 20
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \

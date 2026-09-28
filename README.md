@@ -102,17 +102,6 @@ Mitigação em planejamento: mover a resolução para dentro da transação que 
 
 A regra de distribuição roda **exclusivamente** no servidor, dentro de `TicketAssignmentService`, e é testável sem passar por HTTP. A tela chama `GET /tickets/next-assignee` apenas para *pré-visualizar* a sugestão acompanhada da justificativa de carga — o endpoint não altera nenhum dado. Isso evita duplicar regra de negócio no front e dá transparência ao usuário sem abrir mão do controle do servidor.
 
-### Banco de dados
-
-O ambiente de execução usa **MySQL 8** por ser o banco relacional amadurecido para produção, com suporte a transações e a `SELECT ... FOR UPDATE`, recurso usado pela regra de distribuição. Rodar em container deixa o ambiente de execução idêntico ao de qualquer outra máquina, sem instalação local de servidor de banco.
-
-A suíte de testes, por outro lado, roda com um **banco em memória** (`phpunit.xml`): cada teste começa com o esquema vazio e é destruído ao final, o que garante isolamento e velocidade sem precisar subir container nem limpar dados entre execuções.
-
-Trade-off: por serem engines distintas, `whereDate` e ordenações com `CASE` podem se comportar de modo diferente entre execução e teste. A suíte cobre explicitamente a ordenação por prioridade e os filtros por data justamente para reduzir esse risco.
-
-### Sem autenticação
-
-O PDF não exige login, e o requisito 3.2 dispensa tela própria de cadastro de responsáveis. Introduzir autenticação traria middleware, policies e gestão de sessão sem valor entregue no escopo pedido. É a primeira evolução candidata listada em "Próximos Passos".
 
 ## Pré-requisitos
 
@@ -154,6 +143,9 @@ make down        # docker compose down
 make logs        # logs do app
 make shell       # bash dentro do app
 make test        # roda php artisan test --testdox dentro do container
+make coverage    # mede a cobertura de app/ (liga o PCOV só para a medição)
+make coverage-min# roda a suíte e falha se a cobertura cair abaixo de 100%
+make coverage-html # relatório navegável em build/coverage/index.html
 make fresh       # migrate:fresh --seed
 make migrate     # migrate --force
 make npm-build   # npm run build
@@ -186,13 +178,39 @@ make test
 php artisan test --testdox
 ```
 
-Suíte atual (23 testes, 88 asserções):
-- `tests/Unit/TicketModelTest` (4): casts enums, relação assignedUser, factory, labels
-- `tests/Feature/TicketCrudTest` (8): list, create form, store válido, store default opened_at, show, edit, update, redirect /
-- `tests/Feature/TicketValidationTest` (9): title/description obrigatórios, descrição curta, priority/status inválidos, assigned_to obrigatório/inexistente, title >255, update requer campos
-- `tests/Feature/ExampleTest` (1) + `tests/Unit/ExampleTest` (1)
+### Cobertura de código: 100% de `app/`
+
+O driver de cobertura é o [PCOV](https://github.com/krakjoe/pcov), compilado na imagem do Docker. Ele fica com `pcov.enabled=0` para que `make test` e as requisições web não paguem a instrumentação; o target `coverage` o reativa via `PHP_INI_SCAN_DIR`.
+
+```bash
+make coverage      # arquivo por arquivo, sem relatório em disco
+make coverage-min  # mesmo, mas sai com status de erro se ficar abaixo de 100%
+make coverage-html # relatório HTML em build/coverage/index.html + clover.xml
+```
+
+O denominador é `app/`, definido em `phpunit.xml:15-19`. O estado atual é **100,0%** nos 11 arquivos de `app/`, e `make coverage-min` funciona como gate de regressão.
+
+Suíte atual (96 testes, 328 asserções):
+
+| Arquivo | Testes | O que fixa |
+|---|---|---|
+| `tests/Unit/TicketEnumTest` | 10 | rótulos PT-BR (data providers), `values()`, `openStatuses()` (a definição de "em aberto") |
+| `tests/Feature/TicketAssignmentServiceTest` | 9 | regra de distribuição: menor carga, desempate por `high`/`medium`/`low`/`id`, exceção sem responsáveis, `preview()` nos dois caminhos |
+| `tests/Feature/TicketAssignmentEndpointTest` | 3 | `GET /tickets/next-assignee`: 200 com justificativa, 422 sem responsáveis, e o endpoint não altera dados |
+| `tests/Feature/TicketFilterTest` | 14 | busca em título e descrição, filtros de prioridade/status/responsável, intervalo de datas, valores desconhecidos ignorados |
+| `tests/Feature/TicketSortingTest` | 8 | ordenação por cada coluna da whitelist (data provider), ordem semântica de prioridade via `CASE`, padrões e paginação com query string |
+| `tests/Feature/TicketScopeTest` | 11 | os 6 scopes do `Ticket`, incluindo os ramos de "filtro ausente" |
+| `tests/Feature/TicketShowTest` | 6 | contrato da tela de detalhe, `withDefault` de "Sem responsável", 404, telas de cadastro e edição |
+| `tests/Feature/UserModelTest` | 7 | relação `tickets()`, casts (`hashed`, datetime), atributos ocultos e preenchíveis |
+| `tests/Feature/HandleInertiaRequestsTest` | 5 | props `flash.success`/`flash.error` e mensagens de validação em PT-BR |
+| `tests/Feature/DatabaseSeederTest` | 2 | os 3 responsáveis documentados no README |
+| `tests/Unit/TicketModelTest` | 4 | casts enums, relação `assignedUser`, factory, labels |
+| `tests/Feature/TicketCrudTest` | 8 | list, create form, store válido, store default `opened_at`, show, edit, update, redirect `/` |
+| `tests/Feature/TicketValidationTest` | 9 | title/description obrigatórios, descrição curta, priority/status inválidos, `assigned_to` obrigatório/inexistente, title >255, update requer campos |
 
 Todos verdes com `withoutVite()` em `tests/TestCase.php:12` para evitar necessidade do manifest de assets em ambiente de teste.
+
+**Dívida técnica conhecida:** o ramo `: null` de `app/Http/Controllers/TicketController.php:118` é inalcançável, porque `Ticket::assignedUser()` usa `withDefault()` e portanto nunca devolve `null`. Não afeta a cobertura de linhas, mas impede 100% de *branches*.
 
 ## Estrutura
 
