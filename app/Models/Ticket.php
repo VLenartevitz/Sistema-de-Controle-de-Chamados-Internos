@@ -12,6 +12,12 @@ class Ticket extends Model
 {
     use HasFactory;
 
+    /**
+     * Tamanho mínimo da descrição, exigido pelo requisito 2.2 do desafio.
+     * Fica no model para que os dois FormRequests compartilhem o mesmo número.
+     */
+    public const MIN_DESCRIPTION_LENGTH = 10;
+
     protected $fillable = [
         'title',
         'description',
