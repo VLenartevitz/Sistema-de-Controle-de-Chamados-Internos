@@ -67,4 +67,34 @@ class TicketEnumTest extends TestCase
         $this->assertSame(TicketPriority::HIGH, TicketPriority::from('high'));
         $this->assertSame(TicketStatus::IN_PROGRESS, TicketStatus::from('in_progress'));
     }
+
+    public function test_options_serializa_valor_e_rotulo_para_o_formulario(): void
+    {
+        // O formulário e a listagem consomem {value, label}. O enum é o dono do
+        // rótulo, então é ele também que monta esse formato: o PHP continua
+        // sendo a única fonte de verdade para o texto exibido.
+        $this->assertSame([
+            ['value' => 'low', 'label' => 'Baixa'],
+            ['value' => 'medium', 'label' => 'Média'],
+            ['value' => 'high', 'label' => 'Alta'],
+        ], TicketPriority::options());
+
+        $this->assertSame([
+            ['value' => 'open', 'label' => 'Aberto'],
+            ['value' => 'in_progress', 'label' => 'Em andamento'],
+            ['value' => 'resolved', 'label' => 'Resolvido'],
+            ['value' => 'closed', 'label' => 'Fechado'],
+        ], TicketStatus::options());
+    }
+
+    public function test_options_cobre_todos_os_casos_do_enum(): void
+    {
+        foreach ([TicketPriority::class, TicketStatus::class] as $enum) {
+            $this->assertCount(
+                count($enum::cases()),
+                $enum::options(),
+                "options() de {$enum} cobriu todos os casos."
+            );
+        }
+    }
 }

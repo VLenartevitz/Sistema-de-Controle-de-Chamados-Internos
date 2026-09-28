@@ -9,8 +9,10 @@ use App\Http\Requests\UpdateTicketRequest;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Services\TicketAssignmentService;
+use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -27,8 +29,8 @@ class TicketController extends Controller
         $status = in_array($request->input('status'), TicketStatus::values(), true) ? $request->input('status') : null;
         $assignedTo = $request->input('assigned_to');
         $assignedTo = is_numeric($assignedTo) ? (int) $assignedTo : null;
-        $openedFrom = $request->input('opened_from');
-        $openedTo = $request->input('opened_to');
+        $openedFrom = $this->dateOrNull($request->input('opened_from'));
+        $openedTo = $this->dateOrNull($request->input('opened_to'));
         $search = $request->input('search');
 
         $tickets = Ticket::with('assignedUser')
@@ -39,7 +41,7 @@ class TicketController extends Controller
             ->search($search)
             ->when($sort === 'priority', function ($q) use ($direction) {
                 // Ordenação semântica: high > medium > low via CASE
-                $q->orderByRaw("CASE priority WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END " . ($direction === 'asc' ? 'ASC' : 'DESC'));
+                $q->orderByRaw('CASE priority WHEN \'high\' THEN 3 WHEN \'medium\' THEN 2 WHEN \'low\' THEN 1 ELSE 0 END '.($direction === 'asc' ? 'ASC' : 'DESC'));
             }, function ($q) use ($sort, $direction) {
                 $q->orderBy($sort, $direction);
             })
@@ -59,18 +61,14 @@ class TicketController extends Controller
                 'sort' => $sort,
                 'direction' => $direction,
             ],
-            'users' => User::orderBy('name')->get(['id', 'name', 'email']),
-            'priorities' => array_map(fn ($c) => ['value' => $c->value, 'label' => $c->label()], TicketPriority::cases()),
-            'statuses' => array_map(fn ($c) => ['value' => $c->value, 'label' => $c->label()], TicketStatus::cases()),
+            ...$this->formOptions(),
         ]);
     }
 
     public function create(): Response
     {
         return Inertia::render('Tickets/Create', [
-            'users' => User::orderBy('name')->get(['id', 'name', 'email']),
-            'priorities' => array_map(fn ($c) => ['value' => $c->value, 'label' => $c->label()], TicketPriority::cases()),
-            'statuses' => array_map(fn ($c) => ['value' => $c->value, 'label' => $c->label()], TicketStatus::cases()),
+            ...$this->formOptions(),
             'default_opened_at' => now()->format('Y-m-d\TH:i'),
         ]);
     }
@@ -135,9 +133,7 @@ class TicketController extends Controller
                 'assigned_to' => $ticket->assigned_to,
                 'opened_at' => $ticket->opened_at->format('Y-m-d\TH:i'),
             ],
-            'users' => User::orderBy('name')->get(['id', 'name', 'email']),
-            'priorities' => array_map(fn ($c) => ['value' => $c->value, 'label' => $c->label()], TicketPriority::cases()),
-            'statuses' => array_map(fn ($c) => ['value' => $c->value, 'label' => $c->label()], TicketStatus::cases()),
+            ...$this->formOptions(),
         ]);
     }
 
@@ -146,5 +142,46 @@ class TicketController extends Controller
         $ticket->update($request->validated());
 
         return redirect()->route('tickets.show', $ticket)->with('success', 'Chamado atualizado com sucesso!');
+    }
+
+    /**
+     * Aceita apenas o formato Y-m-d, que é o que os <input type="date"> do
+     * formulário produzem. Qualquer outra coisa é descartada em vez de chegar
+     * crua ao whereDate do model, que compararia a data com um valor sem
+     * sentido e devolveria um resultado silenciosamente errado.
+     */
+    private function dateOrNull($value): ?string
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+
+        return $date && $date->format('Y-m-d') === $value ? $value : null;
+    }
+
+    /**
+     * Opções que as telas de cadastro, edição e listagem precisam montar de
+     * forma idêntica. Os rótulos vêm dos próprios enums, então o PHP continua
+     * sendo a única fonte de verdade.
+     *
+     * @return array{users: Collection<int, User>, priorities: array, statuses: array}
+     */
+    private function formOptions(): array
+    {
+        return [
+            'users' => $this->responsaveis(),
+            'priorities' => TicketPriority::options(),
+            'statuses' => TicketStatus::options(),
+        ];
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    private function responsaveis()
+    {
+        return User::orderBy('name')->get(['id', 'name', 'email']);
     }
 }

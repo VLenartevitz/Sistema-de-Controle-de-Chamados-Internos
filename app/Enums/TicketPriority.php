@@ -21,4 +21,18 @@ enum TicketPriority: string
     {
         return array_column(self::cases(), 'value');
     }
+
+    /**
+     * Formato que o formulário e a listagem consomem. O enum é o dono do
+     * próprio rótulo, então a serialização também mora aqui.
+     *
+     * @return array<int, array{value: string, label: string}>
+     */
+    public static function options(): array
+    {
+        return array_map(
+            fn (self $case) => ['value' => $case->value, 'label' => $case->label()],
+            self::cases()
+        );
+    }
 }

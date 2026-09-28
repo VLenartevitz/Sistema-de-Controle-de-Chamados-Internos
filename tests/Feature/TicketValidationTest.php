@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -129,7 +130,7 @@ class TicketValidationTest extends TestCase
     public function test_update_requires_all_fields(): void
     {
         $user = User::factory()->create();
-        $ticket = \App\Models\Ticket::factory()->create(['assigned_to' => $user->id]);
+        $ticket = Ticket::factory()->create(['assigned_to' => $user->id]);
 
         $response = $this->put("/tickets/{$ticket->id}", [
             'title' => '',
@@ -141,5 +142,35 @@ class TicketValidationTest extends TestCase
         ]);
 
         $response->assertSessionHasErrors(['title', 'description', 'priority', 'status', 'assigned_to', 'opened_at']);
+    }
+
+    public function test_update_rejects_short_description(): void
+    {
+        $user = User::factory()->create();
+        $ticket = Ticket::factory()->create(['assigned_to' => $user->id]);
+
+        $response = $this->put("/tickets/{$ticket->id}", [
+            'title' => 'Título válido',
+            'description' => 'curta',
+            'priority' => 'high',
+            'status' => 'open',
+            'assigned_to' => $user->id,
+            'opened_at' => '2026-09-01 09:00',
+        ]);
+
+        $response->assertSessionHasErrors([
+            'description' => 'A descrição deve ter pelo menos 10 caracteres.',
+        ]);
+    }
+
+    public function test_nao_expoe_rota_de_exclusao_de_chamados(): void
+    {
+        $ticket = Ticket::factory()->create();
+
+        // A especificação não pede exclusão; sem o `except(['destroy'])` na
+        // rota, este DELETE chegava a um método inexistente e devolvia 500.
+        $this->delete("/tickets/{$ticket->id}")->assertStatus(405);
+
+        $this->assertDatabaseHas('tickets', ['id' => $ticket->id]);
     }
 }

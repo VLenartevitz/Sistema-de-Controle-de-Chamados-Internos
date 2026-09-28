@@ -238,4 +238,37 @@ class TicketFilterTest extends TestCase
             collect($props['statuses'])->pluck('label')->all()
         );
     }
+
+    public function test_descarta_filtros_de_data_fora_do_formato_aceito(): void
+    {
+        $antigo = Ticket::factory()->create(['opened_at' => '2025-01-01 09:00']);
+        $recente = Ticket::factory()->create(['opened_at' => '2026-05-10 09:00']);
+
+        // Data em formato brasileiro, data impossível e lixo: nada disso pode
+        // chegar ao whereDate, onde a comparação seria inválida e o resultado
+        // da listagem silenciosamente errado.
+        foreach (['01/02/2026', '2026-13-45', 'ontem', '2026-1-1'] as $invalida) {
+            $props = $this->props($this->get('/tickets?opened_from='.urlencode($invalida)));
+
+            $this->assertNull($props['filters']['opened_from'], "Filtro inválido aceito: {$invalida}");
+        }
+
+        // Com o filtro descartado, a listagem volta a trazer tudo.
+        $this->assertEqualsCanonicalizing(
+            [$antigo->id, $recente->id],
+            $this->ids($this->get('/tickets?opened_from=01%2F02%2F2026'))
+        );
+    }
+
+    public function test_aceita_filtro_de_data_no_formato_do_navegador(): void
+    {
+        $antigo = Ticket::factory()->create(['opened_at' => '2025-01-01 09:00']);
+        $recente = Ticket::factory()->create(['opened_at' => '2026-05-10 09:00']);
+
+        $response = $this->get('/tickets?opened_from=2026-01-01');
+
+        $this->assertSame([$recente->id], $this->ids($response));
+        $this->assertSame('2026-01-01', $this->props($response)['filters']['opened_from']);
+        $this->assertNotContains($antigo->id, $this->ids($response));
+    }
 }
