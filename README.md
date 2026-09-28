@@ -35,6 +35,14 @@ Decisões arquiteturais:
 - [x] Seeder com 3 responsáveis (João Silva, Maria Souza, Carlos Oliveira)
 - [x] Select de responsável disponível ao abrir e ao editar
 - [x] Sem tela de cadastro própria, conforme o requisito 3.2
+- [x] 14 chamados de demonstração, para a listagem nascer com conteúdo e a distribuição automática ter carga diferente entre os responsáveis
+
+> O seeder é o que torna a entrega avaliável em 2 minutos: sem ele a tela
+> central do sistema abre vazia. Os 14 chamados têm carga ** propositalmente
+> desigual** (8 / 4 / 2 em aberto), porque a regra de distribuição só é
+> observável quando alguém está menos sobrecarregado que os outros. Os status
+> `resolved` e `closed` aparecem justamente para ilustrar que não entram na
+> contagem de carga.
 
 **Distribuição automática (PDF 4.0)**
 - [x] `TicketAssignmentService` com a regra de menor carga
@@ -52,6 +60,8 @@ Decisões arquiteturais:
 - [x] Testes automatizados de CRUD, validação, filtros e regra de distribuição
 
 **Fora do escopo** (PDF 3): tela de cadastro de responsáveis, notificações por e-mail/WhatsApp, anexos, comentários, chat, SLA, permissões avançadas e microserviços.
+
+**Fora do escopo por ausência no PDF:** exclusão de chamados. A seção 2.0 lista cadastro, edição, listagem e visualização, sem DELETE, e um chamado resolvido é histórico. A rota de destroy foi retirada em vez de ficar registrada sem controller por trás — `DELETE /tickets/{id}` responde 405, que é o comportamento correto para um método não implementado, e há teste travando isso.
 
 ## Decisões e Trade-offs
 
@@ -128,7 +138,7 @@ docker compose exec app npm install
 # Gere key se necessário (entrypoint já gera)
 docker compose exec app php artisan key:generate
 
-# Popule os 3 responsáveis
+# Popule os 3 responsáveis e os 14 chamados de demonstração
 docker compose exec app php artisan migrate:fresh --seed --force
 docker compose exec app npm run build
 ```
@@ -168,14 +178,41 @@ php artisan serve
 
 ## Testes
 
-```bash
-# Dentro do Docker (recomendado - fácil, isolado)
-docker compose exec app php artisan test --testdox
-# ou
-make test
+A suíte roda com **SQLite em memória** (`phpunit.xml`), ou seja, não depende do container de banco nem de dados seedados.
 
-# Local
-php artisan test --testdox
+### Pré-requisito
+
+O container do app precisa estar de pé:
+
+```bash
+docker compose ps        # app deve estar "running"
+make up                  # se não estiver, sobe app + db
+```
+
+### Suíte completa
+
+```bash
+make test                # equivalente a docker compose exec app php artisan test --testdox
+# ou
+docker compose exec app php artisan test --testdox
+```
+
+Com `--testdox` o output mostra um teste por linha (formato de narrativa); sem ele, `php artisan test` imprime o ponto puro por teste.
+
+### Um arquivo de teste
+
+```bash
+docker compose exec app php artisan test tests/Feature/TicketAssignmentServiceTest.php
+docker compose exec app php artisan test tests/Unit/TicketEnumTest.php
+```
+
+### Um teste específico
+
+O `--filter` aceita o nome do método ou um trecho dele:
+
+```bash
+docker compose exec app php artisan test --filter=test_atribui_ao_responsavel_com_menos_chamados
+docker compose exec app php artisan test --filter=TicketFilterTest
 ```
 
 ### Cobertura de código: 100% de `app/`
@@ -190,27 +227,27 @@ make coverage-html # relatório HTML em build/coverage/index.html + clover.xml
 
 O denominador é `app/`, definido em `phpunit.xml:15-19`. O estado atual é **100,0%** nos 11 arquivos de `app/`, e `make coverage-min` funciona como gate de regressão.
 
-Suíte atual (96 testes, 328 asserções):
+Suíte atual (104 testes, 403 asserções):
 
 | Arquivo | Testes | O que fixa |
 |---|---|---|
-| `tests/Unit/TicketEnumTest` | 10 | rótulos PT-BR (data providers), `values()`, `openStatuses()` (a definição de "em aberto") |
+| `tests/Unit/TicketEnumTest` | 12 | rótulos PT-BR (data providers), `values()`, `openStatuses()` (a definição de "em aberto"), `options()` consumida pelo formulário |
 | `tests/Feature/TicketAssignmentServiceTest` | 9 | regra de distribuição: menor carga, desempate por `high`/`medium`/`low`/`id`, exceção sem responsáveis, `preview()` nos dois caminhos |
 | `tests/Feature/TicketAssignmentEndpointTest` | 3 | `GET /tickets/next-assignee`: 200 com justificativa, 422 sem responsáveis, e o endpoint não altera dados |
-| `tests/Feature/TicketFilterTest` | 14 | busca em título e descrição, filtros de prioridade/status/responsável, intervalo de datas, valores desconhecidos ignorados |
+| `tests/Feature/TicketFilterTest` | 16 | busca em título e descrição, filtros de prioridade/status/responsável, intervalo de datas, valores desconhecidos ignorados, datas fora do formato `Y-m-d` descartadas sem 500 |
 | `tests/Feature/TicketSortingTest` | 8 | ordenação por cada coluna da whitelist (data provider), ordem semântica de prioridade via `CASE`, padrões e paginação com query string |
 | `tests/Feature/TicketScopeTest` | 11 | os 6 scopes do `Ticket`, incluindo os ramos de "filtro ausente" |
 | `tests/Feature/TicketShowTest` | 6 | contrato da tela de detalhe, `withDefault` de "Sem responsável", 404, telas de cadastro e edição |
 | `tests/Feature/UserModelTest` | 7 | relação `tickets()`, casts (`hashed`, datetime), atributos ocultos e preenchíveis |
 | `tests/Feature/HandleInertiaRequestsTest` | 5 | props `flash.success`/`flash.error` e mensagens de validação em PT-BR |
-| `tests/Feature/DatabaseSeederTest` | 2 | os 3 responsáveis documentados no README |
+| `tests/Feature/DatabaseSeederTest` | 4 | os 3 responsáveis documentados no README, os 14 chamados de exemplo, as datas passadas e a carga desigual entre eles |
 | `tests/Unit/TicketModelTest` | 4 | casts enums, relação `assignedUser`, factory, labels |
 | `tests/Feature/TicketCrudTest` | 8 | list, create form, store válido, store default `opened_at`, show, edit, update, redirect `/` |
-| `tests/Feature/TicketValidationTest` | 9 | title/description obrigatórios, descrição curta, priority/status inválidos, `assigned_to` obrigatório/inexistente, title >255, update requer campos |
+| `tests/Feature/TicketValidationTest` | 11 | title/description obrigatórios, descrição curta (no create e no update), priority/status inválidos, `assigned_to` obrigatório/inexistente, title >255, update requer campos, `DELETE /tickets/{id}` inexistente devolve 405 |
 
 Todos verdes com `withoutVite()` em `tests/TestCase.php:12` para evitar necessidade do manifest de assets em ambiente de teste.
 
-**Dívida técnica conhecida:** o ramo `: null` de `app/Http/Controllers/TicketController.php:118` é inalcançável, porque `Ticket::assignedUser()` usa `withDefault()` e portanto nunca devolve `null`. Não afeta a cobertura de linhas, mas impede 100% de *branches*.
+**Dívida técnica conhecida:** o ramo `: null` de `app/Http/Controllers/TicketController.php:116` é inalcançável, porque `Ticket::assignedUser()` usa `withDefault()` e portanto nunca devolve `null`. Não afeta a cobertura de linhas, mas impede 100% de *branches*.
 
 ## Estrutura
 
@@ -223,17 +260,34 @@ app/Http/Requests/StoreTicketRequest, UpdateTicketRequest
 app/Http/Controllers/TicketController (index, create, store, show, edit, update, nextAssignee)
 app/Http/Middleware/HandleInertiaRequests
 resources/js/Layouts/AppLayout.vue
+resources/js/Components/TicketForm.vue (corpo do form, compartilhado por Create e Edit)
+resources/js/Components/AutoAssignButton.vue (pré-visualização da distribuição automática)
 resources/js/Pages/Tickets/{Index,Create,Show,Edit}.vue
 database/migrations/*_create_tickets_table.php
 database/factories/TicketFactory, UserFactory
-database/seeders/DatabaseSeeder (3 responsáveis)
+database/seeders/DatabaseSeeder (3 responsáveis + 14 chamados de exemplo)
 tests/Feature/TicketCrudTest, TicketValidationTest
 tests/Unit/TicketModelTest
 Dockerfile (php:8.4-cli + node20 + composer)
 docker-compose.yml (app, db mysql:8.0, test)
 Makefile
-Docs/ (PDF do desafio)
+Docs/ (PDF do desafio - ignorado no git por ser sigiloso)
 ```
+
+### Componentes Vue
+
+`Create.vue` e `Edit.vue` são irmão de ~45 linhas cada: valores iniciais do
+`useForm`, destino do submit e rótulo do botão. Todo o corpo do formulário
+(campos, validação, select de responsável) está em `Components/TicketForm.vue`,
+e as diferenças reais entre as duas telas viraram props (`assign-placeholder`
+só no cadastro, `opened-at-required` só na edição). A consequência prática é
+que um ajuste no formulário é uma edição, não duas — o Vite ainda extrai
+`TicketForm` como um chunk compartilhado entre as duas rotas.
+
+A mesma disciplina vale para os rótulos: `Index.vue` não mantém uma cópia de
+`"Alta"` / `"Em andamento"` em JavaScript. Os enums PHP expõem `options()` e o
+controller envia as props `priorities` e `statuses`, de modo que o texto
+exibido tem uma única origem e não pode divergir entre back e front.
 
 ## Modelo de Dados
 
