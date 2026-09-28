@@ -26,9 +26,9 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
-*Docs
 
-# Project specific (Docs mantido versionado — SDD em Docs/)
-# *Docs removido — descomente abaixo se quiser ignorar temporários
-# Docs/*.tmp
-# Docs/*.log
+# Project specific
+# O desafio da Codificar é sigiloso ("em nenhuma hipótese deve ser divulgado a
+# terceiros"), então Docs/ fica fora do histórico de propósito. Se precisar
+# versionar o plano de adequação, use `!Docs/PLANO*.md` acima deste padrão.
+*Docs

@@ -1,9 +1,9 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "codificar/sistema-de-controle-de-chamados-internos",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "Sistema de Controle de Chamados Internos - desafio tecnico Codificar.",
+    "keywords": ["laravel", "chamados", "inertia", "vue"],
     "license": "MIT",
     "require": {
         "php": "^8.3",
