@@ -1,0 +1,92 @@
+name: CI
+
+# O gate local é `make coverage-min`; aqui ele roda em todo push e pull request,
+# para que a suíte e o mínimo de cobertura não dependam de alguém lembrar de
+# executá-los. Mesmo gate, mesmas regras: os testes usam SQLite em memória
+# (phpunit.xml), então a CI não precisa subir MySQL.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Testes e cobertura (PHP)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instala PHP e extensões
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo, pdo_sqlite, zip, bcmath
+          coverage: pcov
+          tools: composer:v2
+
+      - name: Cache de dependências
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Instala dependências
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Prepara o .env
+        run: cp .env.example .env && php artisan key:generate --force
+
+      - name: Testes com cobertura mínima de 100% em app/
+        # `--min=100` falha o job se a cobertura de linhas de app/ cair abaixo
+        # do mínimo. O denominador vem do bloco <source> do phpunit.xml
+        # (diretório app), o mesmo que o `make coverage-min` local usa.
+        run: php artisan test --coverage --min=100
+
+  frontend:
+    name: Build do frontend (Vue + Vite)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instala Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Instala dependências
+        run: npm ci || npm install
+
+      - name: Compila os assets
+        # Não há teste de template no projeto, então o build é a verificação de
+        # que os componentes Vue e as páginas Inertia continuam compilando.
+        # Precisa de internet: a fonte Instrument Sans vem do CDN do Bunny.
+        run: npm run build
+
+  style:
+    name: Estilo (Pint)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instala PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+
+      - name: Instala dependências
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Verifica o estilo sem corrigir
+        run: ./vendor/bin/pint --test

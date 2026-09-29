@@ -34,6 +34,13 @@ fi
 if [ "$SKIP_MIGRATIONS" != "true" ]; then
   echo "Running migrations..."
   php artisan migrate --force || echo "migrate failed, will retry on next start"
+
+  # Primeira execução: popula responsáveis e chamados de exemplo. O comando é
+  # idempotente (só semeia se `users` estiver vazio), então reiniciar o
+  # container não duplica nada. Sem isso, um clone limpo ficaria sem nenhum
+  # responsável e o primeiro chamado não poderia ser aberto, porque o campo
+  # assigned_to é obrigatório.
+  php artisan chamados:seed-if-empty || echo "seed-if-empty failed, will retry on next start"
 fi
 
 # Clear caches

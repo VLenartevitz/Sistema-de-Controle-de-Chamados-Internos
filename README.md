@@ -16,6 +16,24 @@ Escopo entregue: cadastro, edição, listagem e visualização de chamados, dist
 | PHPUnit 12 | Testes | Padrão Laravel, cobertura das regras principais. Escolha alternativa a Pest, que não é exigido. |
 | Docker + docker-compose | Infra | Requisito da entrega: `use Docker` e `construir de maneira que consigam testar facilmente`. 1 comando sobe app+db, outro roda testes. |
 
+### Referências e recursos externos
+
+O PDF pede que referências e bibliotecas externas sejam registradas aqui. O
+projeto usa:
+
+| Recurso | Origem | Como é usado |
+|---|---|---|
+| [PCOV](https://github.com/krakjoe/pcov) | PECL, compilado no `Dockerfile` | Driver de cobertura. Vem com `pcov.enabled=0` e só é ligado no `make coverage`. |
+| [Bunny Fonts](https://bunny.net/fonts/) — Instrument Sans | `fonts.bunny.net` | Baixada em tempo de `npm run build` pelo plugin `fonts` do `laravel-vite-plugin` e emitida como `.woff2` local em `public/build/assets/`. |
+| Imagem base `php:8.4-cli`, `mysql:8.0`, Node 20 (NodeSource), `composer:2` | Docker Hub / deb.nodesource.com | Só na construção da imagem. |
+
+⚠️ **O `npm run build` precisa de acesso à internet**, porque a fonte é
+baixada do CDN durante o build. Sem rede, o `npm run build` falha e, como
+`public/build` não é versionado, a aplicação sobe sem manifest do Vite e toda
+página responde 500. Se você estiver offline, apague a linha `bunny(...)` em
+`vite.config.js` ou aponte `input` para uma fonte local — o resto do projeto não
+depende disso.
+
 Decisões arquiteturais:
 - **Monólito modular single-repo**: projeto pequeno, único domínio. Evita custo de separar front/back.
 - **Sem autenticação**: o PDF não exige login, e o requisito 3.2 dispensa tela própria de cadastro de responsáveis. Introduzir auth traria middleware, policies e gestão de sessão sem valor entregue no escopo. É a primeira evolução candidata (ver "Próximos Passos").
@@ -38,11 +56,11 @@ Decisões arquiteturais:
 - [x] 14 chamados de demonstração, para a listagem nascer com conteúdo e a distribuição automática ter carga diferente entre os responsáveis
 
 > O seeder é o que torna a entrega avaliável em 2 minutos: sem ele a tela
-> central do sistema abre vazia. Os 14 chamados têm carga ** propositalmente
-> desigual** (8 / 4 / 2 em aberto), porque a regra de distribuição só é
-> observável quando alguém está menos sobrecarregado que os outros. Os status
-> `resolved` e `closed` aparecem justamente para ilustrar que não entram na
-> contagem de carga.
+> central do sistema abre vazia. Os 14 chamados têm carga **propositalmente
+> desigual** (João 4, Maria 2, Carlos 2 em aberto), porque a regra de
+> distribuição só é observável quando alguém está menos sobrecarregado que os
+> outros. Os status `resolved` e `closed` aparecem justamente para ilustrar que
+> não entram na contagem de carga.
 
 **Distribuição automática (PDF 4.0)**
 - [x] `TicketAssignmentService` com a regra de menor carga
@@ -117,6 +135,7 @@ A regra de distribuição roda **exclusivamente** no servidor, dentro de `Ticket
 
 - Docker e Docker Compose v2
 - Git
+- **Acesso à internet** — a imagem baixa a fonte Instrument Sans do CDN no `npm run build` (ver "Referências e recursos externos")
 - (Opcional sem Docker) PHP 8.3+, Composer 2, Node 20+, MySQL 8
 
 ## Instalação e Execução com Docker (Recomendado)
@@ -125,7 +144,8 @@ A regra de distribuição roda **exclusivamente** no servidor, dentro de `Ticket
 git clone <repo> && cd Sistema-de-Controle-de-Chamados-Internos
 cp .env.example .env
 
-# Sobe app (porta 8000) + db (porta 3308) e roda as migrations automaticamente
+# Sobe app (porta 8000) + db (porta 3308), roda as migrations e popula os
+# dados de demonstração na primeira execução
 docker compose up --build -d
 
 # Acompanhe logs (opcional)
@@ -138,12 +158,23 @@ docker compose exec app npm install
 # Gere key se necessário (entrypoint já gera)
 docker compose exec app php artisan key:generate
 
-# Popule os 3 responsáveis e os 14 chamados de demonstração
+# Só se quiser recomeçar do zero
 docker compose exec app php artisan migrate:fresh --seed --force
 docker compose exec app npm run build
 ```
 
 Acesse: **http://localhost:8000** -> redireciona para `/tickets`.
+
+**Você não precisa rodar `db:seed` na mão.** O entrypoint do container chama
+`php artisan chamados:seed-if-empty` logo depois das migrations, que semeia os
+3 responsáveis e os 14 chamados **apenas se a tabela `users` estiver vazia**.
+Isso existe por dois motivos: o requisito 3.4 pede "pelo menos 3 responsáveis
+disponíveis na aplicação", e como `assigned_to` é obrigatório, um clone sem
+seed não permitiria abrir nem o primeiro chamado. A guarda de banco vazio
+mantém o comando idempotente, então `docker compose restart` não duplica nada.
+
+Para zerar a base e voltar ao estado inicial a qualquer momento:
+`make fresh`.
 
 ### Makefile (atalhos para testar facilmente)
 
@@ -162,6 +193,17 @@ make npm-build   # npm run build
 ```
 
 **Exigência 4 atendida:** `make test` ou `docker compose exec app php artisan test --testdox` roda toda a suíte sem depender do container de banco (usa banco em memória configurado em `phpunit.xml`).
+
+### CI
+
+`.github/workflows/ci.yml` roda em todo push e pull request para `main`, com
+três jobs independentes — qualquer um deles reprova o PR:
+
+| Job | O que roda | Por quê |
+|---|---|---|
+| `backend` | `php artisan test --coverage --min=100` | Mesmo gate do `make coverage-min` local. SQLite em memória, sem serviço de banco. |
+| `frontend` | `npm run build` | Não há teste de template no projeto, então o build é o que garante que componentes e páginas Inertia continuam compilando. |
+| `style` | `./vendor/bin/pint --test` | Estilo verificado, não corrigido: o job falha em vez de reescrever o código de quem commitou. |
 
 ## Execução sem Docker (alternativa)
 
@@ -225,9 +267,9 @@ make coverage-min  # mesmo, mas sai com status de erro se ficar abaixo de 100%
 make coverage-html # relatório HTML em build/coverage/index.html + clover.xml
 ```
 
-O denominador é `app/`, definido em `phpunit.xml:15-19`. O estado atual é **100,0%** nos 11 arquivos de `app/`, e `make coverage-min` funciona como gate de regressão.
+O denominador é `app/`, definido em `phpunit.xml:15-19`. O estado atual é **100,0%** nos 12 arquivos de `app/`, e `make coverage-min` funciona como gate de regressão.
 
-Suíte atual (104 testes, 403 asserções):
+Suíte atual (108 testes, 416 asserções):
 
 | Arquivo | Testes | O que fixa |
 |---|---|---|
@@ -241,6 +283,7 @@ Suíte atual (104 testes, 403 asserções):
 | `tests/Feature/UserModelTest` | 7 | relação `tickets()`, casts (`hashed`, datetime), atributos ocultos e preenchíveis |
 | `tests/Feature/HandleInertiaRequestsTest` | 5 | props `flash.success`/`flash.error` e mensagens de validação em PT-BR |
 | `tests/Feature/DatabaseSeederTest` | 4 | os 3 responsáveis documentados no README, os 14 chamados de exemplo, as datas passadas e a carga desigual entre eles |
+| `tests/Feature/SeedDemoDataCommandTest` | 4 | `chamados:seed-if-empty` semeia base vazia, não duplica quando já há responsáveis, é idempotente em execuções repetidas e falha sem a tabela `users` |
 | `tests/Unit/TicketModelTest` | 4 | casts enums, relação `assignedUser`, factory, labels |
 | `tests/Feature/TicketCrudTest` | 8 | list, create form, store válido, store default `opened_at`, show, edit, update, redirect `/` |
 | `tests/Feature/TicketValidationTest` | 11 | title/description obrigatórios, descrição curta (no create e no update), priority/status inválidos, `assigned_to` obrigatório/inexistente, title >255, update requer campos, `DELETE /tickets/{id}` inexistente devolve 405 |
@@ -259,6 +302,7 @@ app/Services/TicketAssignmentService (regra de distribuição automática)
 app/Http/Requests/StoreTicketRequest, UpdateTicketRequest
 app/Http/Controllers/TicketController (index, create, store, show, edit, update, nextAssignee)
 app/Http/Middleware/HandleInertiaRequests
+app/Console/Commands/SeedDemoData (chamados:seed-if-empty, roda no boot do container)
 resources/js/Layouts/AppLayout.vue
 resources/js/Components/TicketForm.vue (corpo do form, compartilhado por Create e Edit)
 resources/js/Components/AutoAssignButton.vue (pré-visualização da distribuição automática)
@@ -271,6 +315,7 @@ tests/Unit/TicketModelTest
 Dockerfile (php:8.4-cli + node20 + composer)
 docker-compose.yml (app, db mysql:8.0, test)
 Makefile
+.github/workflows/ci.yml (testes + cobertura, build do front, Pint)
 Docs/ (PDF do desafio - ignorado no git por ser sigiloso)
 ```
 
